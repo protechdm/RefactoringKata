@@ -1,78 +1,79 @@
-﻿namespace Tennis.Game
+﻿using Tennis.Game.Enums;
+using Tennis.Game.Extensions;
+using Tennis.Game.Models;
+
+namespace Tennis.Game
 {
     public class TennisGame : ITennisGame
     {
-        private int m_score1 = 0;
-        private int m_score2 = 0;
-        private string player1Name;
-        private string player2Name;
+        private readonly IReadOnlyDictionary<string, Player> _players;
 
         public TennisGame(string player1Name, string player2Name)
         {
-            this.player1Name = player1Name;
-            this.player2Name = player2Name;
+            _players = new Dictionary<string, Player>()
+            {
+                { player1Name, new Player(player1Name) },
+                { player2Name, new Player(player2Name) }
+            };
         }
+
+        private bool GameOver => _players.Any(x => x.Value.Score >= Score.Won);
+        private Player WinningPlayer => _players.FirstOrDefault(x => x.Value.Score >= Score.Won).Value;
+        private bool AnyPlayerAtAdvantage => _players.Any(x => x.Value.Score == Score.Advantage);
+        private Player PlayerAtAdvantage => _players.FirstOrDefault(x => x.Value.Score == Score.Advantage).Value;
+        private bool ScoresAreEqual => _players.GroupBy(x => x.Value.Score).Count() == 1;
+        private Player OpposingPlayer(Player player) => _players.FirstOrDefault(x => x.Value.Name != player.Name).Value;
 
         public void WonPoint(string playerName)
         {
-            if (playerName == "player1")
-                m_score1 += 1;
-            else
-                m_score2 += 1;
+            if (!GameOver)
+            {
+                _players.TryGetValue(playerName, out Player? playerPointWinner);
+                if (playerPointWinner != null)
+                {
+                    var opposingPlayer = OpposingPlayer(playerPointWinner);
+                    if (opposingPlayer.Score == Score.Advantage)
+                    {
+                        opposingPlayer.Score--;
+                    }
+                    else
+                    {
+                        playerPointWinner.Score++;
+                        if (playerPointWinner.Score == Score.Advantage && opposingPlayer.Score < Score.Forty)
+                        {
+                            playerPointWinner.Score++;
+                        }
+                    }
+                }
+                else
+                {
+                    throw new Exception("Could not find player");
+                }
+            }
         }
 
         public string GetScore()
         {
             string score = "";
-            var tempScore = 0;
-            if (m_score1 == m_score2)
+            if (ScoresAreEqual)
             {
-                switch (m_score1)
-                {
-                    case 0:
-                        score = "Love-All";
-                        break;
-                    case 1:
-                        score = "Fifteen-All";
-                        break;
-                    case 2:
-                        score = "Thirty-All";
-                        break;
-                    default:
-                        score = "Deuce";
-                        break;
-
-                }
+                score = _players.Any(x => x.Value.Score == Score.Forty)
+                    ? Constants.Deuce
+                    : $"{_players.FirstOrDefault().Value.Score.GetDescription()}{Constants.Separator}{Constants.All}";
             }
-            else if (m_score1 >= 4 || m_score2 >= 4)
+            else if (AnyPlayerAtAdvantage)
             {
-                var minusResult = m_score1 - m_score2;
-                if (minusResult == 1) score = "Advantage player1";
-                else if (minusResult == -1) score = "Advantage player2";
-                else if (minusResult >= 2) score = "Win for player1";
-                else score = "Win for player2";
+                score = $"{PlayerAtAdvantage.Score.GetDescription()} {PlayerAtAdvantage.Name}";
+            }
+            else if (GameOver)
+            {
+                score = $"{Constants.WinFor} {WinningPlayer.Name}";
             }
             else
             {
-                for (var i = 1; i < 3; i++)
+                foreach (var player in _players)
                 {
-                    if (i == 1) tempScore = m_score1;
-                    else { score += "-"; tempScore = m_score2; }
-                    switch (tempScore)
-                    {
-                        case 0:
-                            score += "Love";
-                            break;
-                        case 1:
-                            score += "Fifteen";
-                            break;
-                        case 2:
-                            score += "Thirty";
-                            break;
-                        case 3:
-                            score += "Forty";
-                            break;
-                    }
+                    score += $"{(score.Length > 0 ? Constants.Separator : null)}{player.Value.Score.GetDescription()}";
                 }
             }
             return score;
